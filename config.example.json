@@ -2,6 +2,7 @@
     "listen_address": ":8080",
     "upload_path": "./data/",
     "upload_url": "http://localhost:8081/",
+    "remote_addr_header": "X-Real-IP",
     "upload_keys": {
         "upload_key_here": "example upload key"
     }

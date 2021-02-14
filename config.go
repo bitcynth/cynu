@@ -10,10 +10,11 @@ import (
 
 // named configuration to not conflict with the config variable
 type configuration struct {
-	ListenAddr string            `json:"listen_address"`
-	UploadPath string            `json:"upload_path"`
-	UploadURL  string            `json:"upload_url"`
-	Keys       map[string]string `json:"upload_keys"` // {"key here": "comment here"}
+	ListenAddr       string            `json:"listen_address"`
+	UploadPath       string            `json:"upload_path"`
+	UploadURL        string            `json:"upload_url"`
+	RemoteAddrHeader string            `json:"remote_addr_header"`
+	Keys             map[string]string `json:"upload_keys"` // {"key here": "comment here"}
 }
 
 var config configuration
@@ -53,6 +54,9 @@ func loadConfig() {
 	}
 	if *uploadURL != "" {
 		config.UploadURL = *uploadURL
+	}
+	if *remoteAddrHeader != "" {
+		config.RemoteAddrHeader = *remoteAddrHeader
 	}
 
 	// just making config.Keys is initialized

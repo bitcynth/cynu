@@ -17,6 +17,7 @@ import (
 var listenAddr = flag.String("listen", "", "the address to listen on for HTTP (overrides config option)")
 var uploadPath = flag.String("upload.path", "", "the place to place the uploaded files (overrides config option)")
 var uploadURL = flag.String("upload.url", "", "the base url for the uploaded files (overrides config option)")
+var remoteAddrHeader = flag.String("header.remoteaddr", "", "if set, uses this header to get the remote ip addr (overrides config option)")
 var configPath = flag.String("config.path", "./config.json", "path to the config file")
 var debugMode = flag.Bool("debug", false, "set to enable debug mode (more logging)")
 
@@ -76,7 +77,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	result, err := uploadFile(req)
 	if err != nil {
-		log.Printf("error [%s]: %v", r.RemoteAddr, err)
+		log.Printf("error [%s]: %v", getRemoteAddr(r), err)
 		w.WriteHeader(errorStatusCode(err))
 		fmt.Fprintf(w, "ERROR: %s\n", errorStatusText(err))
 	}
@@ -155,4 +156,11 @@ func validateUploadKey(key string) bool {
 		return true
 	}
 	return false
+}
+
+func getRemoteAddr(r *http.Request) string {
+	if config.RemoteAddrHeader != "" {
+		return r.Header.Get(config.RemoteAddrHeader)
+	}
+	return r.RemoteAddr
 }
