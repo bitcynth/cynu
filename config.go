@@ -60,6 +60,8 @@ func loadConfig() {
 		config.Keys = make(map[string]string)
 	}
 
+	uploadKeys = make(map[string]bool)
+
 	uploadKeyEnv := os.Getenv("UPLOAD_KEY")
 	if uploadKeyEnv != "" {
 		envKeys := strings.Split(uploadKeyEnv, ",")
@@ -68,7 +70,6 @@ func loadConfig() {
 		}
 	}
 
-	uploadKeys = make(map[string]bool)
 	for key := range config.Keys {
 		uploadKeys[key] = true
 	}
