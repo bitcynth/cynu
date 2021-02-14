@@ -1,13 +1,12 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,14 +14,11 @@ import (
 	"syscall"
 )
 
-type resultJSON struct {
-	FileURL string `json:"file_url"`
-}
-
 var listenAddr = flag.String("listen", "", "the address to listen on for HTTP (overrides config option)")
 var uploadPath = flag.String("upload.path", "", "the place to place the uploaded files (overrides config option)")
 var uploadURL = flag.String("upload.url", "", "the base url for the uploaded files (overrides config option)")
 var configPath = flag.String("config.path", "./config.json", "path to the config file")
+var debugMode = flag.Bool("debug", false, "set to enable debug mode (more logging)")
 
 func main() {
 	flag.Parse()
@@ -52,69 +48,105 @@ func main() {
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		w.WriteHeader(404) // don't acknowledge this path unless using correct method
-		fmt.Fprint(w, "nope!")
+		w.WriteHeader(http.StatusNotFound) // don't acknowledge this path unless using correct method
+		fmt.Fprint(w, "nope!\n")
 		return
 	}
 
 	r.ParseMultipartForm(32 << 20)
 
-	key := r.FormValue("key")
-	if !validateUploadKey(key) {
-		w.WriteHeader(401)
-		fmt.Fprint(w, "ERROR: invalid upload key!")
-		log.Println("Invalid upload key!")
-		return
-	}
-
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		w.WriteHeader(500)
+		w.WriteHeader(errorStatusCode(errFailPostFile))
+		fmt.Fprintf(w, "ERROR: %s\n", errorStatusText(errFailPostFile))
 		log.Print("failed to get file from form: ", err)
-		fmt.Fprint(w, "ERROR: failed to get file!")
 		return
 	}
-
 	defer file.Close()
 
-	filename := handler.Filename
-	useRandomName := r.FormValue("randomname")
-	if useRandomName == "true" {
-		randstr, err := randomString()
-		filename = randstr + filepath.Ext(handler.Filename)
-		if err != nil {
-			w.WriteHeader(500)
-			log.Print(err)
-			fmt.Fprint(w, "ERROR: failed generate filename!")
-			return
-		}
+	useRandomFilename := r.FormValue("randomname") == "true"
+
+	req := uploadRequest{
+		UploadKey:      r.FormValue("key"),
+		Filename:       handler.Filename,
+		RandomFilename: &useRandomFilename,
+		ContentType:    handler.Header.Get("Content-Type"),
+		InputFile:      file,
 	}
 
-	f, err := os.OpenFile(config.UploadPath+filename, os.O_WRONLY|os.O_CREATE, 0666)
+	result, err := uploadFile(req)
 	if err != nil {
-		w.WriteHeader(500)
-		log.Print(err)
-		fmt.Fprint(w, "ERROR: failed to open file")
-		return
+		log.Printf("error [%s]: %v", r.RemoteAddr, err)
+		w.WriteHeader(errorStatusCode(err))
+		fmt.Fprintf(w, "ERROR: %s\n", errorStatusText(err))
 	}
-	defer f.Close()
 
-	io.Copy(f, file)
-
-	res := &resultJSON{
-		FileURL: config.UploadURL + filename,
+	res := &uploadResultJSON{
+		FileURL: result.FileURL,
 	}
 
 	jsonData, err := json.Marshal(res)
 	if err != nil {
-		w.WriteHeader(500)
-		log.Print(err)
-		fmt.Fprint(w, "ERROR: failed to create json")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		log.Print("failed to generate response json: ", err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonData)
+}
+
+func uploadFile(req uploadRequest) (*uploadResult, error) {
+	if !validateUploadKey(req.UploadKey) {
+		log.Print("invalid upload key!")
+		return nil, errInvalidUploadKey
+	}
+
+	if req.ContentType == "" && req.Filename != "" {
+		fnExt := filepath.Ext(req.Filename)
+		if fnExt != "" {
+			req.ContentType = mime.TypeByExtension(fnExt)
+			if *debugMode {
+				log.Printf("selecting content type \"%s\" for file ext \"%s\"", req.ContentType, fnExt)
+			}
+		}
+	}
+
+	filename := req.Filename
+	if *req.RandomFilename {
+		randName, err := randomFilename()
+		if err != nil {
+			log.Print("error generating random filename: ", err)
+			return nil, errFailedRandomName
+		}
+		fnExt := filepath.Ext(req.Filename)
+		if fnExt == "" {
+			fnExt, _ = getExtByMimetype(req.ContentType)
+			if fnExt == "" {
+				fnExt = ".dat"
+			}
+		}
+		filename = randName + fnExt
+	}
+
+	f, err := os.OpenFile(config.UploadPath+filename, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Print("error opening output file: ", err)
+		return nil, errFailedOutputFile
+	}
+	defer f.Close()
+
+	n, err := io.Copy(f, req.InputFile)
+	if err != nil {
+		log.Printf("got error at %d bytes written: %v", n, err)
+		return nil, errFailedWriteFile
+	}
+
+	result := &uploadResult{
+		FileURL: config.UploadURL + filename,
+	}
+
+	return result, nil
 }
 
 func validateUploadKey(key string) bool {
@@ -123,14 +155,4 @@ func validateUploadKey(key string) bool {
 		return true
 	}
 	return false
-}
-
-func randomString() (string, error) {
-	length := 8
-	bytes := make([]byte, length)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
 }
