@@ -26,24 +26,24 @@ func main() {
 
 	loadConfig()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGHUP)
+	http.HandleFunc("/upload", handleUpload)
 
 	go func() {
-		for {
-			s := <-sig
-			if s == syscall.SIGHUP {
-				log.Print("received SIGHUP signal, reloading...")
-				loadConfig()
-			}
+		err := http.ListenAndServe(config.ListenAddr, nil)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}()
 
-	http.HandleFunc("/upload", handleUpload)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP)
 
-	err := http.ListenAndServe(config.ListenAddr, nil)
-	if err != nil {
-		log.Fatal(err)
+	for {
+		s := <-sig
+		if s == syscall.SIGHUP {
+			log.Print("received SIGHUP signal, reloading...")
+			loadConfig()
+		}
 	}
 }
 
