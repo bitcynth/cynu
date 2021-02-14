@@ -11,7 +11,8 @@ type uploadRequest struct {
 }
 
 type uploadResult struct {
-	FileURL string
+	FileURL     string
+	ContentType string
 }
 
 type uploadResultJSON struct {

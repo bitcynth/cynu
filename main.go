@@ -28,6 +28,9 @@ func main() {
 
 	http.HandleFunc("/upload", handleUpload)
 
+	// API compat modes
+	http.HandleFunc("/compat/imgur/image", handleCompatImgurImage)
+
 	go func() {
 		err := http.ListenAndServe(config.ListenAddr, nil)
 		if err != nil {
@@ -144,7 +147,8 @@ func uploadFile(req uploadRequest) (*uploadResult, error) {
 	}
 
 	result := &uploadResult{
-		FileURL: config.UploadURL + filename,
+		FileURL:     config.UploadURL + filename,
+		ContentType: req.ContentType,
 	}
 
 	return result, nil
