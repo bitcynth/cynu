@@ -1,0 +1,8 @@
+{
+    "listen_address": ":8080",
+    "upload_path": "./data/",
+    "upload_url": "http://localhost:8081/",
+    "upload_keys": {
+        "upload_key_here": "example upload key"
+    }
+}

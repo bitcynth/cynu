@@ -10,23 +10,41 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 )
-
-var listenAddr = flag.String("listen", ":8080", "the address to listen on for HTTP")
-var uploadPath = flag.String("upload.path", "./data/", "the place to place the uploaded files")
-var uploadURL = flag.String("upload.url", "http://localhost:8081/", "the base url for the uploaded files")
 
 type resultJSON struct {
 	FileURL string `json:"file_url"`
 }
 
+var listenAddr = flag.String("listen", "", "the address to listen on for HTTP (overrides config option)")
+var uploadPath = flag.String("upload.path", "", "the place to place the uploaded files (overrides config option)")
+var uploadURL = flag.String("upload.url", "", "the base url for the uploaded files (overrides config option)")
+var configPath = flag.String("config.path", "./config.json", "path to the config file")
+
 func main() {
 	flag.Parse()
 
+	loadConfig()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP)
+
+	go func() {
+		for {
+			s := <-sig
+			if s == syscall.SIGHUP {
+				log.Print("received SIGHUP signal, reloading...")
+				loadConfig()
+			}
+		}
+	}()
+
 	http.HandleFunc("/upload", handleUpload)
 
-	err := http.ListenAndServe(*listenAddr, nil)
+	err := http.ListenAndServe(config.ListenAddr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -34,6 +52,7 @@ func main() {
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
+		w.WriteHeader(404) // don't acknowledge this path unless using correct method
 		fmt.Fprint(w, "nope!")
 		return
 	}
@@ -51,7 +70,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	file, handler, err := r.FormFile("file")
 	if err != nil {
 		w.WriteHeader(500)
-		log.Print(err)
+		log.Print("failed to get file from form: ", err)
 		fmt.Fprint(w, "ERROR: failed to get file!")
 		return
 	}
@@ -71,7 +90,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	f, err := os.OpenFile(*uploadPath+filename, os.O_WRONLY|os.O_CREATE, 0666)
+	f, err := os.OpenFile(config.UploadPath+filename, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		w.WriteHeader(500)
 		log.Print(err)
@@ -83,7 +102,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	io.Copy(f, file)
 
 	res := &resultJSON{
-		FileURL: *uploadURL + filename,
+		FileURL: config.UploadURL + filename,
 	}
 
 	jsonData, err := json.Marshal(res)
@@ -98,9 +117,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonData)
 }
 
-// TODO: implement multi-key system
 func validateUploadKey(key string) bool {
-	if key == os.Getenv("UPLOAD_KEY") {
+	v, ok := uploadKeys[key]
+	if ok && v {
 		return true
 	}
 	return false
