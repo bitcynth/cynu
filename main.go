@@ -130,7 +130,7 @@ func uploadFile(req uploadRequest) (*uploadResult, error) {
 		filename = randName + fnExt
 	}
 
-	f, err := os.OpenFile(config.UploadPath+filename, os.O_WRONLY|os.O_CREATE, 0666)
+	f, err := os.OpenFile(filepath.Join(config.UploadPath, filename), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		log.Print("error opening output file: ", err)
 		return nil, errFailedOutputFile
