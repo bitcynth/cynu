@@ -151,7 +151,8 @@ func uploadFile(req uploadRequest) (*uploadResult, error) {
 }
 
 func validateUploadKey(key string) bool {
-	v, ok := uploadKeys[key]
+	keys := *uploadKeys
+	v, ok := keys[key]
 	if ok && v {
 		return true
 	}

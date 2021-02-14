@@ -17,7 +17,10 @@ type configuration struct {
 	Keys             map[string]string `json:"upload_keys"` // {"key here": "comment here"}
 }
 
-var config configuration
+var config *configuration
+
+var oldConfig configuration
+var newConfig configuration
 
 var defaultConfig = configuration{
 	ListenAddr: ":8080",
@@ -26,12 +29,19 @@ var defaultConfig = configuration{
 }
 
 // just because env vars and other ways to provide keys
-var uploadKeys map[string]bool
+var uploadKeys *map[string]bool
+
+var oldUploadKeys map[string]bool
+var newUploadKeys map[string]bool
 
 // loadConfig tries to load the config file and then apply flags
 // loadConfig doesn't fail if it can't read the config file.
 func loadConfig() {
-	config = defaultConfig
+	oldUploadKeys = newUploadKeys
+	uploadKeys = &oldUploadKeys
+	oldConfig = newConfig
+	config = &oldConfig
+	newConfig = defaultConfig
 
 	// populate with values from config file
 	configBytes, err := ioutil.ReadFile(*configPath)
@@ -40,41 +50,44 @@ func loadConfig() {
 	} else if err != nil {
 		log.Printf("error loading config file: %v", err)
 	} else {
-		if err := json.Unmarshal(configBytes, &config); err != nil {
+		if err := json.Unmarshal(configBytes, &newConfig); err != nil {
 			log.Printf("error parsing config file: %v", err)
 		}
 	}
 
 	// apply values from flags
 	if *listenAddr != "" {
-		config.ListenAddr = *listenAddr
+		newConfig.ListenAddr = *listenAddr
 	}
 	if *uploadPath != "" {
-		config.UploadPath = *uploadPath
+		newConfig.UploadPath = *uploadPath
 	}
 	if *uploadURL != "" {
-		config.UploadURL = *uploadURL
+		newConfig.UploadURL = *uploadURL
 	}
 	if *remoteAddrHeader != "" {
-		config.RemoteAddrHeader = *remoteAddrHeader
+		newConfig.RemoteAddrHeader = *remoteAddrHeader
 	}
 
 	// just making config.Keys is initialized
-	if config.Keys == nil {
-		config.Keys = make(map[string]string)
+	if newConfig.Keys == nil {
+		newConfig.Keys = make(map[string]string)
 	}
 
-	uploadKeys = make(map[string]bool)
+	newUploadKeys = make(map[string]bool)
 
 	uploadKeyEnv := os.Getenv("UPLOAD_KEY")
 	if uploadKeyEnv != "" {
 		envKeys := strings.Split(uploadKeyEnv, ",")
 		for _, key := range envKeys {
-			uploadKeys[key] = true
+			newUploadKeys[key] = true
 		}
 	}
 
-	for key := range config.Keys {
-		uploadKeys[key] = true
+	for key := range newConfig.Keys {
+		newUploadKeys[key] = true
 	}
+
+	uploadKeys = &newUploadKeys
+	config = &newConfig
 }
